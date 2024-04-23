@@ -4,6 +4,7 @@ package io.animity.player
 
 import android.content.Intent
 import android.os.Bundle
+import android.widget.Button
 import androidx.activity.enableEdgeToEdge
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
@@ -23,23 +24,22 @@ class MainActivity : AppCompatActivity() {
             v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom)
             insets
         }
-
-        val intent = Intent(this, TestPlayer::class.java).apply {
-            putExtra(
-                ANIME_DATA,
-                AnimityPlayerData(
-                    animeId = "1",
-                    playbackType = PlaybackType.Local(
-                        "http://qthttp.apple.com.edgesuite.net/1010qwoeiuryfg/sl.m3u8",
-                    ),
-                    episodeTitle = "Naruto Shippuden Episode 1",
-                    episodeNumber = 1,
-                    episodeThumb = "https://www.example.com/thumb.jpg"
-                )
-            )
+        findViewById<Button>(R.id.button).setOnClickListener {
+            val intent =
+                Intent(this, TestPlayer::class.java).apply {
+                    putExtra(
+                        ANIME_DATA,
+                        AnimityPlayerData(
+                            animeId = "1",
+                            playbackType =
+                                PlaybackType.Internet("http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4"),
+                            episodeTitle = "Naruto Shippuden Episode 1",
+                            episodeNumber = "123123",
+                            episodeThumb = "https://www.example.com/thumb.jpg",
+                        ),
+                    )
+                }
+            startActivity(intent)
         }
-        startActivity(intent)
     }
-
-
 }

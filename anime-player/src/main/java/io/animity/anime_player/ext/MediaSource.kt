@@ -9,11 +9,10 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import io.animity.anime_player.playback.PlaybackType
 
-
 fun DefaultMediaSourceFactory.createMediaSourceBasedOnPlaybackType(
     playbackType: PlaybackType,
     playLocally: () -> MediaItem,
-    playInternet: () -> MediaItem
+    playInternet: () -> MediaItem,
 ): MediaSource {
     return when (playbackType) {
         is PlaybackType.Local -> createMediaSource(playLocally())

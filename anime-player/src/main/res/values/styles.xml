@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="ExoStyledControls.Button.Bottom">
+        <item name="android:gravity">center_horizontal</item>
+        <item name="android:layout_width">@dimen/exo_small_icon_width</item>
+        <item name="android:layout_height">@dimen/exo_small_icon_height</item>
+        <item name="android:layout_marginLeft">@dimen/exo_small_icon_horizontal_margin</item>
+        <item name="android:layout_marginRight">@dimen/exo_small_icon_horizontal_margin</item>
+        <item name="android:paddingLeft">@dimen/exo_small_icon_padding_horizontal</item>
+        <item name="android:paddingRight">@dimen/exo_small_icon_padding_horizontal</item>
+        <item name="android:paddingTop">@dimen/exo_small_icon_padding_vertical</item>
+        <item name="android:paddingBottom">@dimen/exo_small_icon_padding_vertical</item>
+    </style>
+
+    <style name="ExoStyledControls.Button.Bottom.Exit">
+        <item name="android:src">@drawable/exo_icon_close_player</item>
+    </style>
+
+</resources>

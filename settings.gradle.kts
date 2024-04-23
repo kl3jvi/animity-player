@@ -1,5 +1,3 @@
-import org.gradle.initialization.Environment
-
 pluginManagement {
     repositories {
         google {

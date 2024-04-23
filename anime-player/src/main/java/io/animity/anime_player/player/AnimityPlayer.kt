@@ -1,15 +1,20 @@
 package io.animity.anime_player.player
 
+import android.app.PictureInPictureParams
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.util.Rational
+import android.view.View
 import androidx.annotation.OptIn
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -19,9 +24,11 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.TrackSelector
+import androidx.media3.ui.TrackSelectionDialogBuilder
 import io.animity.anime_player.R
 import io.animity.anime_player.databinding.AnimityPlayerBinding
 import io.animity.anime_player.ext.getImageButton
+import io.animity.anime_player.ext.getTextView
 import io.animity.anime_player.playback.AnimityPlayerData
 import io.animity.anime_player.playback.PlayBackState
 import io.animity.anime_player.playback.PlaybackType
@@ -31,31 +38,48 @@ import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onEach
 import androidx.media3.ui.R as Media3R
 
 @UnstableApi
 abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
-
     private lateinit var player: ExoPlayer
-    private lateinit var dataPassed: AnimityPlayerData
-    private lateinit var binding: AnimityPlayerBinding
+    open lateinit var dataPassed: AnimityPlayerData
+    lateinit var binding: AnimityPlayerBinding
+    val currentSelectedStream: MutableMap<String, String?> = LinkedHashMap()
 
-    val playBackState: Flow<PlayBackState> = callbackFlow {
-        val listener = object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                trySend(playbackState.toPlayBackState())
-            }
+    abstract val getMediaStreamHandler: (String) -> Flow<Map<String, String?>>
 
-            override fun onPlayerError(error: PlaybackException) {
-                super.onPlayerError(error)
-                Log.e("AnimityPlayer", "onPlayerError: ${error.message}")
-            }
+    val playBackState: Flow<PlayBackState> =
+        callbackFlow {
+            val listener =
+                object : Player.Listener {
+                    override fun onPlaybackStateChanged(playbackState: Int) {
+                        trySend(playbackState.toPlayBackState())
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        super.onPlayerError(error)
+                        Log.e("AnimityPlayer", "onPlayerError: ${error.message}")
+                    }
+                }
+            player.addListener(listener)
+            awaitClose { player.removeListener(listener) }
         }
-        player.addListener(listener)
-        awaitClose { player.removeListener(listener) }
-    }
+
+    val currentProgress =
+        flow {
+            while (true) {
+                emit(player.currentPosition)
+                delay(1000)
+            }
+        }.distinctUntilChanged().flowOn(Dispatchers.Main)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,67 +87,98 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
         binding = AnimityPlayerBinding.inflate(layoutInflater)
         setContentView(binding.root)
         hideSystemUi()
+        binding.videoView.getImageButton(Media3R.id.exo_settings, ::showQualityDialog)
         dataPassed = getPlaybackData()
+        setupViews()
         setupPlayer()
+    }
+
+    private fun setupViews() =
+        with(binding.videoView) {
+            getTextView(R.id.video_title, dataPassed.episodeTitle)
+            getTextView(R.id.video_description, dataPassed.episodeNumber)
+            getImageButton(R.id.exit_video_player) { finish() }
+        }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (isPictureInPictureEnabled()) {
+            val aspectRatio = Rational(16, 9)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                enterPictureInPictureMode(
+                    PictureInPictureParams
+                        .Builder()
+                        .setAspectRatio(aspectRatio)
+                        .build(),
+                )
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                enterPictureInPictureMode()
+            }
+        }
     }
 
     @OptIn(UnstableApi::class)
     private fun setupPlayer() {
-        player = ExoPlayer.Builder(this)
-            .setAudioAttributes(getAudioAttributes(), true)
-            .setTrackSelector(getTrackSelector())
-            .setSeekForwardIncrementMs(getSeekSettings().first)
-            .setSeekBackIncrementMs(getSeekSettings().second)
-            .build()
+        player =
+            ExoPlayer.Builder(this)
+                .setAudioAttributes(getAudioAttributes(), true)
+                .setTrackSelector(getTrackSelector())
+                .setSeekForwardIncrementMs(getSeekSettings().first)
+                .setSeekBackIncrementMs(getSeekSettings().second)
+                .build()
         player.addListener(this)
 
         when (val type = dataPassed.playbackType) {
+            is PlaybackType.Internet -> showStreamChooserDialog(type.remoteStream, ::preparePlayer)
             is PlaybackType.Local -> preparePlayer(type.localStream)
-            is PlaybackType.Internet -> showStreamChooserDialog(
-                type.streamList,
-                ::preparePlayer
-            )
         }
     }
 
     private fun preparePlayer(uri: String) {
-        val mediaItem = MediaItem.fromUri(uri)
+        val mediaItem =
+            MediaItem.Builder()
+                .setUri(uri)
+                .build()
         binding.videoView.player = player
-        player.isCommandAvailable(Player.COMMAND_SET_REPEAT_MODE)
-        binding.videoView.getImageButton(Media3R.id.exo_fullscreen) {
-            Log.e("AnimityPlayer", "FullScreen Clicked")
-        }
         player.setMediaSource(
             DefaultMediaSourceFactory(this)
                 .setDataSourceFactory(getCacheDataSourceFactory())
-                .createMediaSource(mediaItem)
+                .createMediaSource(mediaItem),
         )
         player.prepare()
+        player.seekTo(setPlaybackPosition())
         player.playWhenReady = true
     }
 
-
     private fun showStreamChooserDialog(
-        streamList: List<Pair<String, String>>,
-        selectedStream: (String) -> Unit
+        stream: String,
+        selectedStream: (String) -> Unit,
     ) {
-        AlertDialog.Builder(this)
-            .setTitle(getString(R.string.choose_stream))
-            .setSingleChoiceItems(streamList.map { it.first }.toTypedArray(), 0) { _, which ->
-                selectedStream((streamList.map { it.second }[which]))
-            }
-            .setCancelable(false)
-            .show()
+        getMediaStreamHandler(stream)
+            .onEach {
+                val filteredMap = it.filterValues { value -> value != null }
+                currentSelectedStream.putAll(filteredMap)
+                Log.d("PlayerActivity", "onEach: $filteredMap")
+            }.catch { exception ->
+                showErrorMessage(exception.message ?: "Error occurred while fetching media url")
+                Log.e("PlayerActivity", "catch: ", exception)
+            }.onCompletion {
+                AlertDialog.Builder(this@AnimityPlayer)
+                    .setTitle(getString(R.string.choose_stream))
+                    .setSingleChoiceItems(
+                        currentSelectedStream.keys.toTypedArray(),
+                        0,
+                    ) { dialog, which ->
+                        selectedStream(currentSelectedStream.values.elementAt(which).orEmpty())
+                        dialog.dismiss()
+                    }
+                    .setCancelable(false)
+                    .show()
+                Log.e("PlayerActivity", "onCompletion: ")
+            }.launchIn(lifecycleScope)
     }
 
-    val currentProgress = flow<Long> {
-        while (true) {
-            emit(player.currentPosition)
-            delay(1000)
-        }
-    }.flowOn(Dispatchers.Main)
-
-    private fun getPlaybackData(): AnimityPlayerData {
+    open fun getPlaybackData(): AnimityPlayerData {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             intent.getParcelableExtra(ANIME_DATA, AnimityPlayerData::class.java)
                 ?: throw IllegalArgumentException("Intent must have AnimityPlayerData")
@@ -133,17 +188,22 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
         }
     }
 
-    abstract fun getCacheDataSourceFactory(): DataSource.Factory
+    abstract fun showErrorMessage(string: String)
 
-    open fun getSeekSettings(): Pair<Long, Long> {
-        return Pair(10_000, 10_000)
-    }
+    open fun setPlaybackPosition(): Long = 0L
+
+    abstract fun getCacheDataSourceFactory(): DataSource.Factory
 
     @OptIn(UnstableApi::class)
     abstract fun getTrackSelector(): TrackSelector
 
     abstract fun getAudioAttributes(): AudioAttributes
 
+    abstract fun isPictureInPictureEnabled(): Boolean
+
+    open fun getSeekSettings(): Pair<Long, Long> {
+        return Pair(10_000, 10_000)
+    }
 
     override fun onPlaybackStateChanged(playbackState: Int) {
         super.onPlaybackStateChanged(playbackState)
@@ -151,6 +211,17 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
             binding.videoView.useController = true
             binding.videoView.controllerAutoShow = true
         }
+    }
+
+    private fun showQualityDialog(view: View) {
+        TrackSelectionDialogBuilder(
+            view.context,
+            getString(R.string.select_quality),
+            player,
+            C.TRACK_TYPE_VIDEO,
+        ).setTrackNameProvider { format ->
+            if (format.frameRate > 0f) format.height.toString() + "p" else format.height.toString() + "p (fps : N/A)"
+        }.build().show()
     }
 
     private fun hideSystemUi() {
@@ -166,11 +237,6 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
         super.onDestroy()
         player.removeListener(this)
         player.release()
-    }
-
-    override fun onPlayerError(error: PlaybackException) {
-        super.onPlayerError(error)
-        Log.e("AnimityPlayer", "onPlayerError: ${error.errorCodeName}")
     }
 
     companion object {

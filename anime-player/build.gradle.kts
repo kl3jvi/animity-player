@@ -1,9 +1,9 @@
 plugins {
     alias(libs.plugins.androidLibrary)
     alias(libs.plugins.jetbrainsKotlinAndroid)
+    id("com.vanniktech.maven.publish") version "0.28.0"
     id("kotlin-parcelize")
     id("kotlin-kapt")
-    id("maven-publish")
 }
 
 val getVersionName = { "1.0.0" }
@@ -14,7 +14,7 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        minSdk = 24
+        minSdk = 21
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
@@ -25,7 +25,7 @@ android {
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
         }
     }
@@ -43,33 +43,22 @@ android {
     }
 }
 
-publishing{
-    publications{
-        create<MavenPublication>("maven"){
-            groupId = "io.animity.libraries"
-            artifactId = getArtifactId()
-            version = getVersionName()
-//            from(components["release"])
-        }
-    }
-}
-
 dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
 
-    //koin
+    // koin
     api(libs.koin.android)
 
     api(libs.androidx.media3.exoplayer)
     api(libs.androidx.media3.ui)
     api(libs.androidx.media3.common)
     api(libs.androidx.media3.exoplayer.hls)
+    api(libs.androidx.media3.datasource.cronet)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
-
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

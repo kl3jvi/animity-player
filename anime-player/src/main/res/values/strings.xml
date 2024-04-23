@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="choose_stream">Choose Stream</string>
+    <string name="channel_name">Anime Downloads</string>
+    <string name="anime_description">Anime download service</string>
+    <string name="error_loading_media">Error loading media</string>
+    <string name="select_quality">Select Quality</string>
 </resources>

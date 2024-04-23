@@ -4,7 +4,7 @@ enum class PlayBackState {
     IDLE,
     BUFFERING,
     READY,
-    ENDED;
+    ENDED,
 }
 
 fun Int.toPlayBackState(): PlayBackState {

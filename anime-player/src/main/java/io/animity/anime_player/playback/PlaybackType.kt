@@ -9,7 +9,5 @@ sealed class PlaybackType : Parcelable {
     data class Local(val localStream: String) : PlaybackType()
 
     @Parcelize
-    data class Internet(
-        val streamList: List<Pair<String, String>> = emptyList(),
-    ) : PlaybackType()
+    data class Internet(val remoteStream: String) : PlaybackType()
 }
