@@ -17,4 +17,8 @@
         <item name="android:src">@drawable/exo_icon_close_player</item>
     </style>
 
+    <style name="CustomControllerTheme" parent="AlertDialog.AppCompat.Light">
+        <item name="colorPrimary">#E91E63</item>
+    </style>
+
 </resources>

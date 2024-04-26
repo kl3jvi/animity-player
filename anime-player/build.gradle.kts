@@ -57,6 +57,8 @@ dependencies {
     api(libs.androidx.media3.common)
     api(libs.androidx.media3.exoplayer.hls)
     api(libs.androidx.media3.datasource.cronet)
+    api(libs.androidx.media3.cast)
+    api(libs.androidx.mediarouter)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
     testImplementation(libs.junit)

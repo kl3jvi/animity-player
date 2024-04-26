@@ -12,7 +12,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
+import androidx.media3.cast.CastPlayer
+import androidx.media3.cast.SessionAvailabilityListener
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -25,7 +28,12 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.TrackSelector
 import androidx.media3.ui.TrackSelectionDialogBuilder
+import androidx.mediarouter.app.MediaRouteButton
+import com.google.android.gms.cast.framework.CastButtonFactory
+import com.google.android.gms.cast.framework.CastContext
 import io.animity.anime_player.R
+import io.animity.anime_player.cast.CustomCastThemeFactory
+import io.animity.anime_player.cast.PlayingType
 import io.animity.anime_player.databinding.AnimityPlayerBinding
 import io.animity.anime_player.ext.getImageButton
 import io.animity.anime_player.ext.getTextView
@@ -52,7 +60,28 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
     private lateinit var player: ExoPlayer
     open lateinit var dataPassed: AnimityPlayerData
     lateinit var binding: AnimityPlayerBinding
-    val currentSelectedStream: MutableMap<String, String?> = LinkedHashMap()
+    open val currentSelectedStream: MutableMap<String, String?> = LinkedHashMap()
+
+    private lateinit var castPlayer: CastPlayer
+    private lateinit var castContext: CastContext
+
+    private val castSessionAvailable = callbackFlow<PlayingType> {
+        val listener = object : SessionAvailabilityListener {
+            override fun onCastSessionAvailable() {
+                Log.e("AnimityPlayer", "onCastSessionAvailable: ")
+                trySend(PlayingType.CASTING)
+            }
+
+            override fun onCastSessionUnavailable() {
+                Log.e("AnimityPlayer", "onCastSessionUnavailable: ")
+                trySend(PlayingType.LOCAL)
+            }
+        }
+        castContext = CastContext.getSharedInstance(this@AnimityPlayer)
+        castPlayer = CastPlayer(castContext)
+        castPlayer.setSessionAvailabilityListener(listener)
+        awaitClose { castPlayer.setSessionAvailabilityListener(null) }
+    }
 
     abstract val getMediaStreamHandler: (String) -> Flow<Map<String, String?>>
 
@@ -73,13 +102,13 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
             awaitClose { player.removeListener(listener) }
         }
 
-    val currentProgress =
-        flow {
-            while (true) {
-                emit(player.currentPosition)
-                delay(1000)
-            }
-        }.distinctUntilChanged().flowOn(Dispatchers.Main)
+    val currentProgress = flow {
+        while (true) {
+            emit(player.currentPosition)
+            delay(1000)
+        }
+    }.distinctUntilChanged()
+        .flowOn(Dispatchers.Main)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -91,6 +120,7 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
         dataPassed = getPlaybackData()
         setupViews()
         setupPlayer()
+        setupCast(false)
     }
 
     private fun setupViews() =
@@ -119,13 +149,12 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
 
     @OptIn(UnstableApi::class)
     private fun setupPlayer() {
-        player =
-            ExoPlayer.Builder(this)
-                .setAudioAttributes(getAudioAttributes(), true)
-                .setTrackSelector(getTrackSelector())
-                .setSeekForwardIncrementMs(getSeekSettings().first)
-                .setSeekBackIncrementMs(getSeekSettings().second)
-                .build()
+        player = ExoPlayer.Builder(this)
+            .setAudioAttributes(getAudioAttributes(), true)
+            .setTrackSelector(getTrackSelector())
+            .setSeekForwardIncrementMs(getSeekSettings().first)
+            .setSeekBackIncrementMs(getSeekSettings().second)
+            .build()
         player.addListener(this)
 
         when (val type = dataPassed.playbackType) {
@@ -135,10 +164,9 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
     }
 
     private fun preparePlayer(uri: String) {
-        val mediaItem =
-            MediaItem.Builder()
-                .setUri(uri)
-                .build()
+        val mediaItem = MediaItem.Builder()
+            .setUri(uri)
+            .build()
         binding.videoView.player = player
         player.setMediaSource(
             DefaultMediaSourceFactory(this)
@@ -158,10 +186,8 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
             .onEach {
                 val filteredMap = it.filterValues { value -> value != null }
                 currentSelectedStream.putAll(filteredMap)
-                Log.d("PlayerActivity", "onEach: $filteredMap")
             }.catch { exception ->
                 showErrorMessage(exception.message ?: "Error occurred while fetching media url")
-                Log.e("PlayerActivity", "catch: ", exception)
             }.onCompletion {
                 AlertDialog.Builder(this@AnimityPlayer)
                     .setTitle(getString(R.string.choose_stream))
@@ -174,7 +200,6 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
                     }
                     .setCancelable(false)
                     .show()
-                Log.e("PlayerActivity", "onCompletion: ")
             }.launchIn(lifecycleScope)
     }
 
@@ -194,7 +219,6 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
 
     abstract fun getCacheDataSourceFactory(): DataSource.Factory
 
-    @OptIn(UnstableApi::class)
     abstract fun getTrackSelector(): TrackSelector
 
     abstract fun getAudioAttributes(): AudioAttributes
@@ -203,6 +227,15 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
 
     open fun getSeekSettings(): Pair<Long, Long> {
         return Pair(10_000, 10_000)
+    }
+
+    open fun setupCast(castFeatureEnabled: Boolean = false) {
+        val castButton = binding.videoView.findViewById<MediaRouteButton>(R.id.exo_cast)
+        castButton.isVisible = castFeatureEnabled
+        castButton?.apply {
+            CastButtonFactory.setUpMediaRouteButton(context, this)
+            dialogFactory = CustomCastThemeFactory()
+        }
     }
 
     override fun onPlaybackStateChanged(playbackState: Int) {
