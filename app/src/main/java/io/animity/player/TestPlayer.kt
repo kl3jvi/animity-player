@@ -2,6 +2,7 @@
 
 package io.animity.player
 
+import android.os.Bundle
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -115,6 +116,7 @@ var mediaJSON = """{ "categories" : [ { "name" : "Movies",
 class TestPlayer : AnimityPlayer(), CoroutineScope {
 
 
+
     fun test() =
         flow {
             // parse media json to map title to sources first
@@ -125,6 +127,7 @@ class TestPlayer : AnimityPlayer(), CoroutineScope {
                     "mp4_3" to "https://samples.mplayerhq.hu/MPEG-4/test_qcif_200_aac_64.mp4",
                     "avi" to "https://samples.mplayerhq.hu/camera-dvr/nc_sample.avi",
                     "mkv" to "https://avtshare01.rz.tu-ilmenau.de/avt-vqdb-uhd-1/test_1/segments/bigbuck_bunny_8bit_40000kbps_2160p_60.0fps_vp9.mkv",
+                    "m3u8" to "https://bitdash-a.akamaihd.net/content/MI201109210084_1/m3u8s/f08e80da-bf1d-4e3d-8899-f0f6155f6efa.m3u8",
                 ),
             )
         }.flowOn(Dispatchers.IO)

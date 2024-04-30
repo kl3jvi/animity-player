@@ -6,7 +6,7 @@ import androidx.mediarouter.app.MediaRouteControllerDialog
 import androidx.mediarouter.app.MediaRouteControllerDialogFragment
 import io.animity.anime_player.R
 
-class CustomMediaRouteControllerDialogFragment : MediaRouteControllerDialogFragment() {
+class AnimityMediaRouteControllerDialogFragment : MediaRouteControllerDialogFragment() {
     override fun onCreateControllerDialog(
         context: Context,
         savedInstanceState: Bundle?

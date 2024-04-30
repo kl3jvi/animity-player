@@ -48,9 +48,8 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.material)
-
-    // koin
-    api(libs.koin.android)
+// glide
+    implementation(libs.glide)
 
     api(libs.androidx.media3.exoplayer)
     api(libs.androidx.media3.ui)
@@ -59,6 +58,8 @@ dependencies {
     api(libs.androidx.media3.datasource.cronet)
     api(libs.androidx.media3.cast)
     api(libs.androidx.mediarouter)
+
+
     implementation(libs.androidx.activity)
     implementation(libs.androidx.constraintlayout)
     testImplementation(libs.junit)

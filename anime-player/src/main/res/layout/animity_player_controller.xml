@@ -13,7 +13,8 @@
      limitations under the License.
 -->
 <merge xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+    xmlns:tools="http://schemas.android.com/tools"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <!-- 0dp dimensions are used to prevent this view from influencing the size of
          the parent view if it uses "wrap_content". It is expanded to occupy the
@@ -163,6 +164,7 @@
 
         <androidx.mediarouter.app.MediaRouteButton
             android:id="@+id/exo_cast"
+            app:mediaRouteButtonTint="@color/cast_expanded_controller_text_color"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content" />
     </LinearLayout>

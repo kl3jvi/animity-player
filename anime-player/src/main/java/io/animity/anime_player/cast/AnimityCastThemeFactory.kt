@@ -4,12 +4,12 @@ import androidx.mediarouter.app.MediaRouteChooserDialogFragment
 import androidx.mediarouter.app.MediaRouteControllerDialogFragment
 import androidx.mediarouter.app.MediaRouteDialogFactory
 
-class CustomCastThemeFactory : MediaRouteDialogFactory() {
+class AnimityCastThemeFactory : MediaRouteDialogFactory() {
     override fun onCreateChooserDialogFragment(): MediaRouteChooserDialogFragment {
-        return CustomMediaRouterChooserDialogFragment()
+        return AnimityMediaRouterChooserDialogFragment()
     }
 
     override fun onCreateControllerDialogFragment(): MediaRouteControllerDialogFragment {
-        return CustomMediaRouteControllerDialogFragment()
+        return AnimityMediaRouteControllerDialogFragment()
     }
 }

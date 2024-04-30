@@ -12,7 +12,6 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.cast.CastPlayer
 import androidx.media3.cast.SessionAvailabilityListener
@@ -31,9 +30,12 @@ import androidx.media3.ui.TrackSelectionDialogBuilder
 import androidx.mediarouter.app.MediaRouteButton
 import com.google.android.gms.cast.framework.CastButtonFactory
 import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.tasks.Task
 import io.animity.anime_player.R
-import io.animity.anime_player.cast.CustomCastThemeFactory
+import io.animity.anime_player.cast.AnimityCastThemeFactory
 import io.animity.anime_player.cast.PlayingType
+import io.animity.anime_player.cast.PlayingType.CASTING
+import io.animity.anime_player.cast.PlayingType.LOCAL
 import io.animity.anime_player.databinding.AnimityPlayerBinding
 import io.animity.anime_player.ext.getImageButton
 import io.animity.anime_player.ext.getTextView
@@ -53,33 +55,52 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
+import java.util.concurrent.Executors
 import androidx.media3.ui.R as Media3R
 
 @UnstableApi
 abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
-    private lateinit var player: ExoPlayer
-    open lateinit var dataPassed: AnimityPlayerData
     lateinit var binding: AnimityPlayerBinding
+    private lateinit var exoPlayer: ExoPlayer
+    private lateinit var castPlayer: CastPlayer
+    private lateinit var mediaItem: MediaItem
+
+
+    open lateinit var dataPassed: AnimityPlayerData
     open val currentSelectedStream: MutableMap<String, String?> = LinkedHashMap()
 
-    private lateinit var castPlayer: CastPlayer
     private lateinit var castContext: CastContext
 
     private val castSessionAvailable = callbackFlow<PlayingType> {
+        trySend(LOCAL)
         val listener = object : SessionAvailabilityListener {
             override fun onCastSessionAvailable() {
-                Log.e("AnimityPlayer", "onCastSessionAvailable: ")
-                trySend(PlayingType.CASTING)
+                Log.i("AnimityPlayer", "Cast session available")
+                trySend(CASTING)
             }
 
             override fun onCastSessionUnavailable() {
-                Log.e("AnimityPlayer", "onCastSessionUnavailable: ")
-                trySend(PlayingType.LOCAL)
+                Log.i("AnimityPlayer", "Cast session unavailable")
+                trySend(LOCAL)
             }
         }
-        castContext = CastContext.getSharedInstance(this@AnimityPlayer)
-        castPlayer = CastPlayer(castContext)
-        castPlayer.setSessionAvailabilityListener(listener)
+
+        val castContextTask: Task<CastContext> =
+            CastContext.getSharedInstance(this@AnimityPlayer, Executors.newSingleThreadExecutor())
+
+        castContextTask.addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                castContext = task.result
+                castPlayer = CastPlayer(castContext)
+                castPlayer.setSessionAvailabilityListener(listener)
+            } else {
+                Log.e("AnimityPlayer", "CastContextTask completed but was not successful")
+            }
+        }.addOnFailureListener { exception ->
+            Log.e("AnimityPlayer", "CastContextTask failed with exception: ${exception.message}")
+            trySend(LOCAL)
+        }
+
         awaitClose { castPlayer.setSessionAvailabilityListener(null) }
     }
 
@@ -98,13 +119,13 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
                         Log.e("AnimityPlayer", "onPlayerError: ${error.message}")
                     }
                 }
-            player.addListener(listener)
-            awaitClose { player.removeListener(listener) }
+            exoPlayer.addListener(listener)
+            awaitClose { exoPlayer.removeListener(listener) }
         }
 
     val currentProgress = flow {
         while (true) {
-            emit(player.currentPosition)
+            emit(exoPlayer.currentPosition)
             delay(1000)
         }
     }.distinctUntilChanged()
@@ -119,16 +140,17 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
         binding.videoView.getImageButton(Media3R.id.exo_settings, ::showQualityDialog)
         dataPassed = getPlaybackData()
         setupViews()
-        setupPlayer()
-        setupCast(false)
+        setupExoPlayer()
+        setupCast()
     }
 
-    private fun setupViews() =
+    private fun setupViews() {
         with(binding.videoView) {
             getTextView(R.id.video_title, dataPassed.episodeTitle)
             getTextView(R.id.video_description, dataPassed.episodeNumber)
             getImageButton(R.id.exit_video_player) { finish() }
         }
+    }
 
     override fun onUserLeaveHint() {
         super.onUserLeaveHint()
@@ -148,14 +170,14 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
     }
 
     @OptIn(UnstableApi::class)
-    private fun setupPlayer() {
-        player = ExoPlayer.Builder(this)
+    private fun setupExoPlayer() {
+        exoPlayer = ExoPlayer.Builder(this)
             .setAudioAttributes(getAudioAttributes(), true)
             .setTrackSelector(getTrackSelector())
             .setSeekForwardIncrementMs(getSeekSettings().first)
             .setSeekBackIncrementMs(getSeekSettings().second)
             .build()
-        player.addListener(this)
+        exoPlayer.addListener(this)
 
         when (val type = dataPassed.playbackType) {
             is PlaybackType.Internet -> showStreamChooserDialog(type.remoteStream, ::preparePlayer)
@@ -164,18 +186,37 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
     }
 
     private fun preparePlayer(uri: String) {
-        val mediaItem = MediaItem.Builder()
+        mediaItem = MediaItem.Builder()
             .setUri(uri)
             .build()
-        binding.videoView.player = player
-        player.setMediaSource(
-            DefaultMediaSourceFactory(this)
-                .setDataSourceFactory(getCacheDataSourceFactory())
-                .createMediaSource(mediaItem),
-        )
-        player.prepare()
-        player.seekTo(setPlaybackPosition())
-        player.playWhenReady = true
+        castSessionAvailable.onEach {
+            when (it) {
+                CASTING -> {
+                    castPlayer.setMediaItem(mediaItem)
+                    castPlayer.prepare()
+                    binding.videoView.player = castPlayer
+                    castPlayer.playWhenReady = true
+                    if (::exoPlayer.isInitialized) {
+                        exoPlayer.stop()
+                    }
+                }
+
+                LOCAL -> {
+                    exoPlayer.setMediaSource(
+                        DefaultMediaSourceFactory(this)
+                            .setDataSourceFactory(getCacheDataSourceFactory())
+                            .createMediaSource(mediaItem),
+                    )
+                    exoPlayer.prepare()
+                    exoPlayer.seekTo(setPlaybackPosition())
+                    exoPlayer.playWhenReady = true
+                    binding.videoView.player = exoPlayer
+                    if(::castPlayer.isInitialized) {
+                        castPlayer.stop()
+                    }
+                }
+            }
+        }.launchIn(lifecycleScope)
     }
 
     private fun showStreamChooserDialog(
@@ -229,12 +270,11 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
         return Pair(10_000, 10_000)
     }
 
-    open fun setupCast(castFeatureEnabled: Boolean = false) {
+    private fun setupCast() {
         val castButton = binding.videoView.findViewById<MediaRouteButton>(R.id.exo_cast)
-        castButton.isVisible = castFeatureEnabled
         castButton?.apply {
             CastButtonFactory.setUpMediaRouteButton(context, this)
-            dialogFactory = CustomCastThemeFactory()
+            dialogFactory = AnimityCastThemeFactory()
         }
     }
 
@@ -250,7 +290,7 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
         TrackSelectionDialogBuilder(
             view.context,
             getString(R.string.select_quality),
-            player,
+            exoPlayer,
             C.TRACK_TYPE_VIDEO,
         ).setTrackNameProvider { format ->
             if (format.frameRate > 0f) format.height.toString() + "p" else format.height.toString() + "p (fps : N/A)"
@@ -266,10 +306,11 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
         }
     }
 
+
     override fun onDestroy() {
         super.onDestroy()
-        player.removeListener(this)
-        player.release()
+        exoPlayer.removeListener(this)
+        exoPlayer.release()
     }
 
     companion object {
