@@ -211,7 +211,7 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
                     exoPlayer.seekTo(setPlaybackPosition())
                     exoPlayer.playWhenReady = true
                     binding.videoView.player = exoPlayer
-                    if(::castPlayer.isInitialized) {
+                    if (::castPlayer.isInitialized) {
                         castPlayer.stop()
                     }
                 }
@@ -230,17 +230,29 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
             }.catch { exception ->
                 showErrorMessage(exception.message ?: "Error occurred while fetching media url")
             }.onCompletion {
-                AlertDialog.Builder(this@AnimityPlayer)
-                    .setTitle(getString(R.string.choose_stream))
-                    .setSingleChoiceItems(
-                        currentSelectedStream.keys.toTypedArray(),
-                        0,
-                    ) { dialog, which ->
-                        selectedStream(currentSelectedStream.values.elementAt(which).orEmpty())
-                        dialog.dismiss()
-                    }
-                    .setCancelable(false)
-                    .show()
+                if (currentSelectedStream.isEmpty()) {
+                    showErrorMessage("No stream available")
+                    finish()
+                }
+
+                if (currentSelectedStream.size == 1) {
+                    selectedStream(currentSelectedStream.values.first().orEmpty())
+                } else if (!isFinishing) {
+                    AlertDialog.Builder(this@AnimityPlayer)
+                        .setTitle(getString(R.string.choose_stream))
+                        .setSingleChoiceItems(
+                            currentSelectedStream.keys.toTypedArray(),
+                            0,
+                        ) { dialog, which ->
+                            selectedStream(currentSelectedStream.values.elementAt(which).orEmpty())
+                            dialog.dismiss()
+                        }
+                        .setCancelable(true)
+                        .setOnCancelListener {
+                            selectedStream(currentSelectedStream.values.elementAt(0).orEmpty())
+                        }
+                        .show()
+                }
             }.launchIn(lifecycleScope)
     }
 
