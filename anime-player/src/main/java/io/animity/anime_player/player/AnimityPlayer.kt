@@ -146,6 +146,7 @@ abstract class AnimityPlayer : AppCompatActivity(), Player.Listener {
 
     private fun setupViews() {
         with(binding.videoView) {
+            keepScreenOn = true
             getTextView(R.id.video_title, dataPassed.episodeTitle)
             getTextView(R.id.video_description, dataPassed.episodeNumber)
             getImageButton(R.id.exit_video_player) { finish() }
